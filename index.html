@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物置整理リスト</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=JetBrains+Mono:wght@400;600&display=swap');
+  :root {
+    --bg: #f5f0e8; --paper: #fffef9; --ink: #1a1714; --muted: #8a8178;
+    --accent: #c84b2f; --done-bg: #e8f0e0; --done-text: #5a7a4a; --border: #d4cdc4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Zen Kaku Gothic New', sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; padding: 24px 16px 80px; }
+  header { margin-bottom: 32px; }
+  .header-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; margin-bottom: 6px; }
+  h1 { font-size: 28px; font-weight: 900; line-height: 1.1; margin-bottom: 8px; }
+  .sync-status { font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; flex-shrink: 0; transition: background .3s; }
+  .sync-dot.connected { background: #5a7a4a; }
+  .sync-dot.syncing { background: #d4822a; animation: pulse .8s infinite; }
+  .sync-dot.error { background: var(--accent); }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+  .progress-bar-wrap { background: var(--border); border-radius: 2px; height: 6px; margin-top: 12px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--accent); border-radius: 2px; transition: width .4s ease; }
+  .progress-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .phase { margin-bottom: 28px; }
+  .phase-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  .phase-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .phase-title { font-size: 13px; font-weight: 700; letter-spacing: .05em; }
+  .phase-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); margin-left: auto; }
+  .task-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--paper); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; cursor: pointer; transition: all .2s ease; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .task-item:active { transform: scale(.98); }
+  .task-item.done { background: var(--done-bg); border-color: #b8d4a8; opacity: .75; }
+  .task-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); flex-shrink: 0; margin-top: 2px; min-width: 28px; }
+  .task-check { width: 20px; height: 20px; border: 2px solid var(--border); border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all .2s ease; margin-top: 1px; }
+  .task-item.done .task-check { background: var(--done-text); border-color: var(--done-text); }
+  .task-check::after { content: ''; display: none; width: 5px; height: 9px; border: 2px solid white; border-top: none; border-left: none; transform: rotate(45deg) translate(-1px,-1px); }
+  .task-item.done .task-check::after { display: block; }
+  .task-text { font-size: 14px; line-height: 1.5; flex: 1; }
+  .task-item.done .task-text { color: var(--done-text); text-decoration: line-through; text-decoration-color: #a0c090; }
+  .task-note { font-size: 11px; color: var(--muted); margin-top: 3px; font-style: italic; }
+  .depends { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent); margin-top: 3px; }
+  .reset-btn { display: block; margin: 32px auto 0; padding: 10px 24px; background: transparent; border: 1px solid var(--border); border-radius: 4px; font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 13px; color: var(--muted); cursor: pointer; transition: all .2s; }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .all-done-banner { display: none; text-align: center; padding: 24px; background: var(--done-bg); border: 1px solid #b8d4a8; border-radius: 8px; margin-bottom: 24px; font-size: 18px; font-weight: 700; color: var(--done-text); }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-label">物置整理プロジェクト</div>
+  <h1>1日1タスク<br>かたづけリスト</h1>
+  <div class="sync-status">
+    <div class="sync-dot" id="syncDot"></div>
+    <span id="syncLabel" style="color:var(--muted)">接続中...</span>
+  </div>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+  <div class="progress-label" id="progressLabel">0 / 0 完了</div>
+</header>
+<div class="all-done-banner" id="allDoneBanner">🎉 全タスク完了！書斎移転の準備ができました</div>
+<div id="taskContainer"></div>
+<button class="reset-btn" onclick="resetAll()">リセット</button>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, update, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  databaseURL: "https://katazuke-list-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const stateRef = ref(db, 'tasks');
+
+const phases = [
+  {
+    title: "🗂 準備", color: "#c84b2f",
+    tasks: [
+      { text: "45Lゴミ袋を10枚買う", note: "ドラッグストア・ホームセンターで" },
+      { text: "「売る」「捨てる」「WICへ移す」用のダンボール箱を3つ用意する" },
+    ]
+  },
+  {
+    title: "👕 衣類・布団・カバン", color: "#d4822a",
+    tasks: [
+      { text: "着ないコート・スーツ時代のカバンを全部出して並べる" },
+      { text: "コート・カバンをメルカリに出品する①", note: "ブランド品はメルカリが高値になりやすい", depends: "↑ の次" },
+      { text: "コート・カバンをメルカリに出品する②（残り）", depends: "↑ の次" },
+      { text: "1〜2週間売れなかったものをジモティー無料 or 捨てる", depends: "↑ の次" },
+      { text: "古い布団を袋に詰める", note: "カビなくても生理的NGなら迷わず処分でOK" },
+      { text: "布団を粗大ゴミ申請して捨てる", note: "自治体の粗大ゴミ受付に電話orネット申込", depends: "↑ の次" },
+    ]
+  },
+  {
+    title: "📚 漫画・CD", color: "#4a7ab5",
+    tasks: [
+      { text: "漫画を全部出してシリーズごとにまとめる" },
+      { text: "ブックオフオンラインで集荷申し込みをする", note: "箱に詰めて送るだけ。値段つかなくても引き取ってくれる", depends: "↑ の次" },
+      { text: "CDを全部出す" },
+      { text: "CDをメルカリで相場検索して「売る」「捨てる」に仕分ける", note: "レアものはメルカリ、そうでないものはブックオフに追加", depends: "↑ の次" },
+      { text: "売るCDをメルカリ出品 or ブックオフオンラインに追加", depends: "↑ の次" },
+      { text: "売れなかったCDをゴミに出す", depends: "↑ の次" },
+    ]
+  },
+  {
+    title: "🎌 オタクグッズ・フィギュア", color: "#6a5a9e",
+    tasks: [
+      { text: "フィギュア・オタクグッズを全部出して並べる" },
+      { text: "「今も興味ある」「興味なくなった」「細かい雑多なもの」の3つに分ける", depends: "↑ の次" },
+      { text: "興味なくなったフィギュアをメルカリで相場検索する", note: "プレ値がついてるものは慎重に値付けを", depends: "↑ の次" },
+      { text: "フィギュアをメルカリに出品する①", depends: "↑ の次" },
+      { text: "フィギュアをメルカリに出品する②", depends: "↑ の次" },
+      { text: "細かいオタクグッズをジモティーにまとめて無料出品 or 捨てる", note: "値段つかないものは潔く処分", depends: "↑ の次" },
+      { text: "今も興味あるオタクグッズの収納場所を決めてしまう", note: "書斎移転後の置き場所も考えておく" },
+    ]
+  },
+  {
+    title: "📷 コラボデジカメ", color: "#c84b7a",
+    tasks: [
+      { text: "コラボデジカメのシリーズ名・型番をメモする" },
+      { text: "メルカリ・ヤフオクで相場を検索する", note: "アニメコラボは意外と高値がつくことも", depends: "↑ の次" },
+      { text: "電池を入れて動作確認をする", depends: "↑ の次" },
+      { text: "メルカリかヤフオクに出品する", note: "箱・付属品があれば一緒に写真を撮ると高く売れる", depends: "↑ の次" },
+    ]
+  },
+  {
+    title: "💻 古いPC（2台）", color: "#3a8a6a",
+    tasks: [
+      { text: "PC2台を起動できるか確認する" },
+      { text: "起動できるPCに残しておきたいデータがあればバックアップする", depends: "↑ の次" },
+      { text: "データ消去する（Win:Eraser / 起動不可の場合はHDDを取り出して物理破壊）", note: "ドライバーでHDDに穴あけでOK。SSDはそのまま廃棄で大丈夫", depends: "↑ の次" },
+      { text: "家電量販店（ヤマダ・ビックカメラ等）のPCリサイクル回収に持ち込む", note: "PCリサイクルマークあれば無料。なければ数百円", depends: "↑ の次" },
+    ]
+  },
+  {
+    title: "🔌 家電・ケーブル・燃えないゴミ", color: "#8a5a3a",
+    tasks: [
+      { text: "USBケーブル・古い家電を全部出して並べる" },
+      { text: "使っていないUSBケーブルをまとめて捨てる", note: "今使っているものだけ残す。迷ったら捨てでOK" },
+      { text: "動かない・使わない家電を「燃えないゴミ」「粗大ゴミ」に仕分ける", depends: "↑ の次" },
+      { text: "小型家電を燃えないゴミの日に出す", depends: "↑ の次" },
+      { text: "大型家電を粗大ゴミ申請して出す", depends: "↑ の次" },
+      { text: "家電の箱を全部出して保証書・説明書だけ抜き取る" },
+      { text: "抜き取った保証書をファイルにまとめる", depends: "↑ の次" },
+      { text: "空の箱を段ボールゴミの日に出す", depends: "↑ の次" },
+    ]
+  },
+  {
+    title: "🛋 プレイマット・パズル・棚", color: "#5a8a9e",
+    tasks: [
+      { text: "猫の引っ掻き傷があるプレイマットの状態を写真で確認する", note: "傷の程度次第でジモティー無料 or 粗大ゴミ" },
+      { text: "プレイマットをジモティーに無料出品 or 粗大ゴミ申請する", depends: "↑ の次" },
+      { text: "ジグソーパズルをメルカリで相場検索する", note: "未開封なら値段つくことがある" },
+      { text: "ジグソーパズルをメルカリ出品 or 捨てる", depends: "↑ の次" },
+      { text: "いらない棚を粗大ゴミ申請する" },
+      { text: "棚を粗大ゴミに出す", depends: "↑ の次" },
+    ]
+  },
+  {
+    title: "✅ 仕上げ", color: "#1a1714",
+    tasks: [
+      { text: "物置の床を掃き掃除する" },
+      { text: "書斎の家具（デスク・棚）が5畳に収まるかメジャーで採寸する", note: "ここまで来たら書斎移転の計画を立てよう！" },
+    ]
+  },
+];
+
+let state = {};
+let isConnected = false;
+
+const syncDot = document.getElementById('syncDot');
+const syncLabel = document.getElementById('syncLabel');
+
+function setSyncStatus(status) {
+  syncDot.className = 'sync-dot ' + status;
+  if (status === 'connected') syncLabel.textContent = '同期済み';
+  else if (status === 'syncing') syncLabel.textContent = '同期中...';
+  else if (status === 'error') syncLabel.textContent = '接続エラー';
+  else syncLabel.textContent = '接続中...';
+}
+
+// Firebaseからリアルタイムで受信
+onValue(stateRef, (snapshot) => {
+  state = snapshot.val() || {};
+  isConnected = true;
+  setSyncStatus('connected');
+  render();
+}, (error) => {
+  setSyncStatus('error');
+  console.error(error);
+});
+
+function toggle(key) {
+  setSyncStatus('syncing');
+  state[key] = !state[key];
+  update(stateRef, { [key]: state[key] })
+    .then(() => setSyncStatus('connected'))
+    .catch(() => setSyncStatus('error'));
+  render();
+}
+
+function render() {
+  const container = document.getElementById('taskContainer');
+  container.innerHTML = '';
+  let total = 0, done = 0;
+
+  phases.forEach((phase, pi) => {
+    const el = document.createElement('div');
+    el.className = 'phase';
+    let pd = phase.tasks.filter((_, ti) => state[`${pi}-${ti}`]).length;
+    el.innerHTML = `<div class="phase-header"><div class="phase-dot" style="background:${phase.color}"></div><div class="phase-title">${phase.title}</div><div class="phase-count">${pd}/${phase.tasks.length}</div></div>`;
+
+    phase.tasks.forEach((task, ti) => {
+      const key = `${pi}-${ti}`, isDone = !!state[key];
+      total++; if (isDone) done++;
+      const item = document.createElement('div');
+      item.className = `task-item${isDone ? ' done' : ''}`;
+      item.innerHTML = `
+        <div class="task-num">${String(ti+1).padStart(2,'0')}</div>
+        <div class="task-check"></div>
+        <div style="flex:1">
+          <div class="task-text">${task.text}</div>
+          ${task.note ? `<div class="task-note">${task.note}</div>` : ''}
+          ${task.depends ? `<div class="depends">${task.depends}</div>` : ''}
+        </div>`;
+      item.addEventListener('click', () => toggle(key));
+      el.appendChild(item);
+    });
+    container.appendChild(el);
+  });
+
+  const pct = total ? Math.round(done/total*100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = `${done} / ${total} 完了 (${pct}%)`;
+  document.getElementById('allDoneBanner').style.display = (done===total && total>0) ? 'block' : 'none';
+}
+
+window.resetAll = function() {
+  if (confirm('全てのチェックをリセットしますか？')) {
+    setSyncStatus('syncing');
+    set(stateRef, {})
+      .then(() => setSyncStatus('connected'))
+      .catch(() => setSyncStatus('error'));
+  }
+};
+
+render();
+</script>
+</body>
+</html>
